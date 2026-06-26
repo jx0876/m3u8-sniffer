@@ -3,7 +3,7 @@
 // @name:zh-TW   M3U8 嗅探下載器（本地版）
 // @name:en      M3U8 Sniffer & Downloader (Local)
 // @namespace    https://github.com/jx0876/m3u8-sniffer
-// @version      1.3.2
+// @version      1.4.0
 // @updateURL    https://raw.githubusercontent.com/jx0876/m3u8-sniffer/main/m3u8-sniffer.user.js
 // @downloadURL  https://raw.githubusercontent.com/jx0876/m3u8-sniffer/main/m3u8-sniffer.user.js
 // @description  純本地嗅探並下載頁面 m3u8 / mp4 影音。雙嗅探（攔 XHR/fetch + PerformanceObserver），WebCrypto AES-128 解密，並發下載合併，玻璃感介面。無廣告、無導流、不外送任何網址。
@@ -18,6 +18,7 @@
 // @grant        GM_getValue
 // @grant        unsafeWindow
 // @run-at       document-start
+// @require      https://cdn.jsdelivr.net/npm/mux.js@7.1.0/dist/mux.min.js
 // 注意：不可加 @noframes —— 跨域 iframe 播放器（如 playmogo）的 m3u8 要靠腳本進 iframe 嗅探後 postMessage 回頂層
 // ==/UserScript==
 
@@ -176,6 +177,35 @@
         }
     }
 
+    // ─────────────────── ts → mp4 remux（mux.js，純 JS，不需 ffmpeg）───────────────────
+    // 把合併後的 TS（ArrayBuffer 陣列）轉成可播的 fMP4。失敗丟錯 → 呼叫端退回 .ts
+    function remuxToMp4(buffers) {
+        return new Promise((resolve, reject) => {
+            const mux = (typeof muxjs !== "undefined") ? muxjs : (uw && uw.muxjs);
+            if (!mux || !mux.mp4 || !mux.mp4.Transmuxer) return reject(new Error("muxjs 未載入"));
+            // 串接所有 ts 成一個 Uint8Array
+            const total = buffers.reduce((n, b) => n + b.byteLength, 0);
+            const all = new Uint8Array(total);
+            let off = 0;
+            for (const b of buffers) { all.set(new Uint8Array(b), off); off += b.byteLength; }
+
+            const tx = new mux.mp4.Transmuxer();
+            let init = null;
+            const datas = [];
+            tx.on("data", (seg) => { if (!init) init = seg.initSegment; datas.push(seg.data); });
+            tx.on("done", () => {
+                if (!init || !datas.length) return reject(new Error("remux 無輸出（可能是 HEVC/不支援的編碼）"));
+                let len = init.byteLength + datas.reduce((n, d) => n + d.byteLength, 0);
+                const out = new Uint8Array(len);
+                out.set(init, 0);
+                let o = init.byteLength;
+                for (const d of datas) { out.set(d, o); o += d.byteLength; }
+                resolve(out.buffer);
+            });
+            try { tx.push(all); tx.flush(); } catch (e) { reject(e); }
+        });
+    }
+
     // ─────────────────── 下載引擎 ───────────────────
     // task: { id, type:'m3u8'|'mp4'|'video', url, name, onProgress, onDone, onError }
     // 回傳 controller { abort() }
@@ -235,8 +265,16 @@
                 await Promise.all(Array.from({ length: CONCURRENCY }, worker));
                 if (aborted) return;
 
-                const blob = new Blob(buffers.filter(Boolean), { type: "video/mp2t" });
-                triggerDownload(blob, ensureExt(task.name, "ts"));
+                const valid = buffers.filter(Boolean);
+                // 瀏覽器內 ts → mp4（mux.js）。失敗則退回 .ts
+                task.onProgress(1, "轉 mp4…");
+                try {
+                    const mp4buf = await remuxToMp4(valid);
+                    triggerDownload(new Blob([mp4buf], { type: "video/mp4" }), ensureExt(task.name, "mp4"));
+                } catch (e) {
+                    console.warn("[m3u8] remux 失敗，改存 .ts（可本機 ffmpeg -c copy 轉）", e);
+                    triggerDownload(new Blob(valid, { type: "video/mp2t" }), ensureExt(task.name, "ts"));
+                }
                 task.onDone();
             } catch (e) {
                 if (!aborted) task.onError(e);
