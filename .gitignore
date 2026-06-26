@@ -1,0 +1,5 @@
+node_modules/
+package-lock.json
+*.app/
+影片下載器.app/
+.DS_Store
