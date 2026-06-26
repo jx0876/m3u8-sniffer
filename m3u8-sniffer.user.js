@@ -3,7 +3,7 @@
 // @name:zh-TW   M3U8 嗅探下載器（本地版）
 // @name:en      M3U8 Sniffer & Downloader (Local)
 // @namespace    https://github.com/jx0876/m3u8-sniffer
-// @version      1.3.1
+// @version      1.3.2
 // @updateURL    https://raw.githubusercontent.com/jx0876/m3u8-sniffer/main/m3u8-sniffer.user.js
 // @downloadURL  https://raw.githubusercontent.com/jx0876/m3u8-sniffer/main/m3u8-sniffer.user.js
 // @description  純本地嗅探並下載頁面 m3u8 / mp4 影音。雙嗅探（攔 XHR/fetch + PerformanceObserver），WebCrypto AES-128 解密，並發下載合併，玻璃感介面。無廣告、無導流、不外送任何網址。
@@ -646,13 +646,6 @@
         return { addItem, ensure };
     })();
 
-    // 頂層頁：立刻顯示藥丸鈕（documentElement 一定存在，不等 body / 不靠嗅探觸發）
-    if (isTop) { try { UI.ensure(); } catch (e) { console.error("[m3u8] UI.ensure", e); } }
-
-    // 啟動 DOM 嗅探（UI 已定義，可安全呼叫）
-    if (document.body) startDomWatch();
-    else document.addEventListener("DOMContentLoaded", startDomWatch);
-
     function shortPath(url) {
         try { const u = new URL(url); return (u.pathname.split("/").pop() || u.pathname) + (u.search ? "?…" : ""); }
         catch { return url.slice(0, 40); }
@@ -718,6 +711,13 @@
     .prog { font-size: 11px; opacity: .85; min-width: 36px; }
     .foot { padding: 7px 14px; font-size: 11px; opacity: .45; text-align: center; border-top: 1px solid rgba(255,255,255,.06); }
     `;
+
+    // ── 啟動（放最後：確保 UI 與 STYLE 都已定義，避免 TDZ）──
+    // 頂層頁立刻顯示藥丸鈕（documentElement 一定存在，不等 body / 不靠嗅探觸發）
+    if (isTop) { try { UI.ensure(); } catch (e) { console.error("[m3u8] UI.ensure", e); } }
+    // 啟動 DOM 嗅探
+    if (document.body) startDomWatch();
+    else document.addEventListener("DOMContentLoaded", startDomWatch);
 
     console.log("[m3u8-sniffer] loaded");
 })();
