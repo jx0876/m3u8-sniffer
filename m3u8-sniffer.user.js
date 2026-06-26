@@ -3,7 +3,7 @@
 // @name:zh-TW   M3U8 嗅探下載器（本地版）
 // @name:en      M3U8 Sniffer & Downloader (Local)
 // @namespace    https://github.com/jx0876/m3u8-sniffer
-// @version      1.3.0
+// @version      1.3.1
 // @updateURL    https://raw.githubusercontent.com/jx0876/m3u8-sniffer/main/m3u8-sniffer.user.js
 // @downloadURL  https://raw.githubusercontent.com/jx0876/m3u8-sniffer/main/m3u8-sniffer.user.js
 // @description  純本地嗅探並下載頁面 m3u8 / mp4 影音。雙嗅探（攔 XHR/fetch + PerformanceObserver），WebCrypto AES-128 解密，並發下載合併，玻璃感介面。無廣告、無導流、不外送任何網址。
@@ -438,11 +438,7 @@
             }
         });
         po.observe({ entryTypes: ["resource"] });
-        // 開場補掃既有
-        performance.getEntriesByType("resource").forEach((e) => {
-            if (isM3U8Url(e.name)) addResource("m3u8", e.name, "m3u8");
-            else if (isMP4Url(e.name)) addResource("mp4", e.name, "mp4");
-        });
+        // 開場補掃既有：移到 startDomWatch（須等 UI 定義後才能 addResource）
     } catch {}
 
     // 4) 掃 DOM video/source（即時：MutationObserver + 兜底輪詢）
@@ -461,6 +457,13 @@
     function startDomWatch() {
         if (isTop) UI.ensure();  // 只頂層頁顯示藥丸鈕（iframe 內不畫 UI，只嗅探回傳）
         scanDom(); // 開場即掃一次
+        // 開場補掃既有網路請求（此時 UI 已就緒）
+        try {
+            performance.getEntriesByType("resource").forEach((e) => {
+                if (isM3U8Url(e.name)) addResource("m3u8", e.name, "m3u8");
+                else if (isMP4Url(e.name)) addResource("mp4", e.name, "mp4");
+            });
+        } catch {}
         try {
             const mo = new MutationObserver(scanDom);
             mo.observe(document.documentElement, {
@@ -472,8 +475,7 @@
         let n = 0;
         const t = setInterval(() => { scanDom(); if (++n >= 10) clearInterval(t); }, 1000);
     }
-    if (document.body) startDomWatch();
-    else document.addEventListener("DOMContentLoaded", startDomWatch);
+    // 注意：startDomWatch() 會用到 UI，必須等 UI 定義後才呼叫（見檔尾）
 
     // ─────────────────── 介面（Shadow DOM）───────────────────
     const UI = (function () {
@@ -645,7 +647,11 @@
     })();
 
     // 頂層頁：立刻顯示藥丸鈕（documentElement 一定存在，不等 body / 不靠嗅探觸發）
-    if (isTop) { try { UI.ensure(); } catch {} }
+    if (isTop) { try { UI.ensure(); } catch (e) { console.error("[m3u8] UI.ensure", e); } }
+
+    // 啟動 DOM 嗅探（UI 已定義，可安全呼叫）
+    if (document.body) startDomWatch();
+    else document.addEventListener("DOMContentLoaded", startDomWatch);
 
     function shortPath(url) {
         try { const u = new URL(url); return (u.pathname.split("/").pop() || u.pathname) + (u.search ? "?…" : ""); }
