@@ -3,7 +3,7 @@
 // @name:zh-TW   M3U8 嗅探下載器（本地版）
 // @name:en      M3U8 Sniffer & Downloader (Local)
 // @namespace    https://github.com/jx0876/m3u8-sniffer
-// @version      1.5.0
+// @version      1.6.0
 // @updateURL    https://raw.githubusercontent.com/jx0876/m3u8-sniffer/main/m3u8-sniffer.user.js
 // @downloadURL  https://raw.githubusercontent.com/jx0876/m3u8-sniffer/main/m3u8-sniffer.user.js
 // @description  純本地嗅探並下載頁面 m3u8 / mp4 影音。雙嗅探（攔 XHR/fetch + PerformanceObserver），WebCrypto AES-128 解密，並發下載合併，玻璃感介面。無廣告、無導流、不外送任何網址。
@@ -16,6 +16,7 @@
 // @grant        GM_setClipboard
 // @grant        GM_setValue
 // @grant        GM_getValue
+// @grant        GM_webRequest
 // @grant        unsafeWindow
 // @run-at       document-start
 // @require      https://cdn.jsdelivr.net/npm/mux.js@7.1.0/dist/mux.min.js
@@ -484,6 +485,26 @@
         po.observe({ entryTypes: ["resource"] });
         // 開場補掃既有：移到 startDomWatch（須等 UI 定義後才能 addResource）
     } catch {}
+
+    // 3b) GM_webRequest（瀏覽器層攔截：抓 Web Worker / Service Worker / iframe 載入的 m3u8/mp4，
+    //      不受頁面 JS 環境限制。只能比對網址 → 偽裝副檔名的仍需 DevTools。只在頂層註冊一次，tab 級涵蓋全部）
+    if (isTop) {
+        try {
+            if (typeof GM_webRequest === "function") {
+                GM_webRequest([
+                    { selector: "*://*/*.m3u8*", action: { redirect: { from: "(.*)", to: "$1" } } },
+                    { selector: "*://*/*.mp4*",  action: { redirect: { from: "(.*)", to: "$1" } } },
+                ], function (info, message, details) {
+                    try {
+                        const z = details && details.url;
+                        if (!z) return;
+                        if (isM3U8Url(z)) addResource("m3u8", z, "m3u8");
+                        else if (isMP4Url(z)) addResource("mp4", z, "mp4");
+                    } catch {}
+                });
+            }
+        } catch (e) { console.warn("[m3u8] GM_webRequest 不支援", e); }
+    }
 
     // 4) 掃 DOM video/source（即時：MutationObserver + 兜底輪詢）
     function scanDom() {
