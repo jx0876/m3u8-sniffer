@@ -3,7 +3,7 @@
 // @name:zh-TW   M3U8 嗅探下載器（本地版）
 // @name:en      M3U8 Sniffer & Downloader (Local)
 // @namespace    https://github.com/jx0876/m3u8-sniffer
-// @version      1.6.0
+// @version      1.6.1
 // @updateURL    https://raw.githubusercontent.com/jx0876/m3u8-sniffer/main/m3u8-sniffer.user.js
 // @downloadURL  https://raw.githubusercontent.com/jx0876/m3u8-sniffer/main/m3u8-sniffer.user.js
 // @description  純本地嗅探並下載頁面 m3u8 / mp4 影音。雙嗅探（攔 XHR/fetch + PerformanceObserver），WebCrypto AES-128 解密，並發下載合併，玻璃感介面。無廣告、無導流、不外送任何網址。
@@ -600,6 +600,14 @@
             // 拖曳 + 點擊切換
             makeDraggable(pill, () => { open = !open; render(); });
             panel.querySelector(".closeBtn").addEventListener("click", () => { open = false; render(); });
+
+            // 點面板/藥丸以外的網頁 → 自動收起（composedPath 含 root = 點在自己身上，不關）
+            document.addEventListener("click", (e) => {
+                if (!open) return;
+                const path = e.composedPath ? e.composedPath() : [];
+                if (path.includes(root)) return;
+                open = false; render();
+            }, true);
 
             // 掛到 <html>（比 body 不易被 SPA 重繪洗掉）
             (document.documentElement || document.body).appendChild(root);
