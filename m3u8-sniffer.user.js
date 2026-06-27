@@ -3,7 +3,7 @@
 // @name:zh-TW   M3U8 嗅探下載器（本地版）
 // @name:en      M3U8 Sniffer & Downloader (Local)
 // @namespace    https://github.com/jx0876/m3u8-sniffer
-// @version      1.6.1
+// @version      1.7.0
 // @updateURL    https://raw.githubusercontent.com/jx0876/m3u8-sniffer/main/m3u8-sniffer.user.js
 // @downloadURL  https://raw.githubusercontent.com/jx0876/m3u8-sniffer/main/m3u8-sniffer.user.js
 // @description  純本地嗅探並下載頁面 m3u8 / mp4 影音。雙嗅探（攔 XHR/fetch + PerformanceObserver），WebCrypto AES-128 解密，並發下載合併，玻璃感介面。無廣告、無導流、不外送任何網址。
@@ -377,6 +377,17 @@
     const seen = new Set();
     const resources = []; // {type, url, label, name}
 
+    // 取網頁標題當預設檔名（劇名）：砍「 - 站名」「 | 站名」後綴 + 清非法字元
+    function pageTitleName() {
+        let t = (document.title || "").split(" - ")[0].split(" | ")[0].split("｜")[0];
+        return t.replace(/[\\/:*?"<>|]+/g, "_").replace(/\s+/g, " ").trim();
+    }
+    // 網址檔名（去副檔名）當後備
+    function urlBaseName(u) {
+        try { return decodeURIComponent(new URL(u).pathname.split("/").pop() || "").replace(/\.(m3u8?|ts|txt|mp4)$/i, ""); }
+        catch { return ""; }
+    }
+
     function addResource(type, url, label) {
         try { url = new URL(url, location.href).href; } catch { return; }
         if (seen.has(url)) return;
@@ -391,9 +402,8 @@
             return;
         }
 
-        let name = "";
-        try { name = decodeURIComponent(new URL(url).pathname.split("/").pop() || ""); } catch {}
-        name = name.replace(/\.(m3u8?|ts)$/i, "") || (document.title || "video");
+        // 檔名：優先網頁標題（劇名），其次網址檔名
+        const name = pageTitleName() || urlBaseName(url) || "video";
         const res = { type, url, label: label || type, name };
         resources.push(res);
         UI.addItem(res);
@@ -406,9 +416,8 @@
             if (!d || d.tag !== RELAY_TAG || !d.url) return;
             if (seen.has(d.url)) return;
             seen.add(d.url);
-            let name = "";
-            try { name = decodeURIComponent(new URL(d.url).pathname.split("/").pop() || ""); } catch {}
-            name = name.replace(/\.(m3u8?|ts)$/i, "") || d.frameTitle || (document.title || "video");
+            // 用頂層頁標題（觀看頁劇名，比 iframe 播放器標題有用），後備網址檔名
+            const name = pageTitleName() || urlBaseName(d.url) || "video";
             const res = { type: d.type, url: d.url, label: d.label || d.type, name };
             resources.push(res);
             UI.addItem(res);
